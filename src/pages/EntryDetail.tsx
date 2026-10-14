@@ -1,0 +1,45 @@
+import { useEffect } from 'react'
+import { Link, useParams } from 'react-router'
+import { ArrowLeft, Pencil, Pin, ExternalLink, Github, Globe, BookOpen, CheckCircle2, Clock3, Braces, FolderKanban, Plus, Star } from 'lucide-react'
+import { toast } from 'sonner'
+import { useWorkspace } from '../hooks/useWorkspace'
+import { labels, paths } from '../types'
+import { safeHref, dateLabel } from '../lib/utils'
+import { ProjectVisual, StatusBadge } from '../components/EntryCard'
+import { EntryMenu } from '../components/ui/EntryMenu'
+import { EmptyState } from '../components/ui/EmptyState'
+import { Markdown, CodeBlock } from '../components/Markdown'
+import { AttachmentPanel } from '../components/AttachmentPanel'
+
+export function EntryDetail() {
+  const { id } = useParams()
+  const { entries, setEditor, update, markOpened, add, user, setAuthOpen, loading } = useWorkspace()
+  const entry = entries.find(record => record.id === id)
+  useEffect(() => { if (entry) markOpened(entry) }, [entry?.id])
+  if (loading) return <div className="page-content"><div className="skeleton detail-skeleton" /></div>
+  if (!entry) return <div className="page-content"><EmptyState title={user ? 'This item is not in your universe.' : 'Your workspace is private.'} description={user ? 'It may have been deleted, or it belongs to a different account.' : 'Sign in to access your projects, questions, and knowledge.'} action={user ? undefined : () => setAuthOpen(true)} actionLabel="Sign in" /><Link to="/" className="button secondary"><ArrowLeft size={15} />Back to dashboard</Link></div>
+  const toggle = async () => { try { await update(entry, { pinned: !entry.pinned }) } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to update') } }
+  const complete = async () => { try { await update(entry, { status: entry.kind === 'question' ? (entry.status === 'Solved' ? 'Review' : 'Solved') : (entry.status === 'Completed' ? 'In Progress' : 'Completed') }) } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to update') } }
+  const linkedTasks = entries.filter(record => record.projectId === entry.id && record.kind === 'task')
+  const children = entries.filter(record => record.parentId === entry.id)
+  const links = [['github', 'GitHub repository', Github], ['live', 'Live deployment', Globe], ['documentation', 'Documentation', BookOpen], ['url', entry.kind === 'question' ? 'Original problem' : 'Open resource', ExternalLink]] as const
+  const display = (key: string, heading: string) => entry.data[key] ? <section className="detail-section"><h2>{heading}</h2><Markdown content={String(entry.data[key])} /></section> : null
+  return <div className={`page-content detail-page ${entry.kind === 'note' ? 'note-detail' : ''}`}><Link to={paths[entry.kind]} className="back-link"><ArrowLeft size={15} />Back to {entry.kind === 'question' ? 'questions' : `${labels[entry.kind].toLowerCase()}s`}</Link>
+    <div className="detail-heading"><div><div className="eyebrow">{entry.category}{entry.data.folder && ` / ${entry.data.folder}`}</div><h1>{entry.title}</h1><div className="detail-heading-meta"><StatusBadge status={entry.status} /><span><Clock3 size={13} />Updated {dateLabel(entry.updatedAt)}</span>{entry.pinned && <span><Pin size={13} />Pinned</span>}</div></div><div className="detail-actions"><button className={`button secondary ${entry.pinned ? 'selected' : ''}`} onClick={() => void toggle()}><Pin size={15} />{entry.pinned ? 'Unpin' : 'Pin'}</button><button className="button primary" onClick={() => setEditor({ kind: entry.kind, entry })}><Pencil size={15} />Edit {labels[entry.kind].toLowerCase()}</button><EntryMenu entry={entry} /></div></div>
+    <div className="detail-layout"><article className="panel detail-content">
+      {entry.kind === 'project' && <ProjectVisual category={entry.category} cover={String(entry.data.cover || '')} title={entry.title} />}
+      {entry.description && <section className="detail-section"><h2>{entry.kind === 'question' ? 'Problem statement' : 'Overview'}</h2><Markdown content={entry.description} /></section>}
+      {entry.kind === 'note' && (entry.data.content ? <section className="detail-section"><Markdown content={String(entry.data.content)} /></section> : <EmptyState compact icon={BookOpen} title="A blank page. Endless possibilities." description="Add Markdown content to make this note your own." action={() => setEditor({ kind: entry.kind, entry })} actionLabel="Write your note" />)}
+      {display('details', 'The bigger picture')}{display('constraints', 'Constraints')}{display('samples', 'Sample test cases')}{display('approach', 'Approach & explanation')}
+      {entry.kind === 'question' && <section className="detail-section"><h2><Braces size={18} />C++ solution</h2>{entry.data.code ? <CodeBlock code={String(entry.data.code)} /> : <EmptyState compact icon={Braces} title="Your solution goes here." description="Take your time. Add your approach and code when you’re ready." action={() => setEditor({ kind: entry.kind, entry })} actionLabel="Add a solution" />}</section>}
+      {display('milestones', 'Milestones')}{display('notes', 'Notes to future you')}
+      {['note', 'project'].includes(entry.kind) && <AttachmentPanel entry={entry} />}
+      {entry.kind === 'project' && <section className="detail-section"><div className="section-heading"><h2>Project tasks</h2><button className="text-button" onClick={() => add('task')}><Plus size={15} />Add a task</button></div>{linkedTasks.length ? linkedTasks.map(task => <Link className="learning-row" to={`/tasks/${task.id}`} key={task.id}><CheckCircle2 size={17} /><strong>{task.title}</strong><StatusBadge status={task.status} /></Link>) : <p className="muted">No tasks linked yet. Create a task and choose this project.</p>}</section>}
+      {children.length > 0 && <section className="detail-section"><h2>Nested notes</h2>{children.map(note => <Link className="learning-row" to={`/notes/${note.id}`} key={note.id}><BookOpen size={17} />{note.title}</Link>)}</section>}
+    </article><aside className="detail-sidebar"><section className="panel"><h2 className="detail-sidebar-title">At a glance</h2><dl><dt>Category</dt><dd>{entry.category}</dd><dt>Status</dt><dd><StatusBadge status={entry.status} /></dd><dt>Created</dt><dd>{dateLabel(entry.createdAt)}</dd>{entry.data.startDate && <><dt>Start date</dt><dd>{dateLabel(String(entry.data.startDate))}</dd></>}{entry.kind === 'question' && <><dt>Difficulty</dt><dd><span className={`difficulty difficulty-${String(entry.data.difficulty).toLowerCase()}`}>{String(entry.data.difficulty || 'Easy')}</span></dd><dt>Source</dt><dd>{String(entry.data.source || 'Custom')}</dd><dt>Attempts</dt><dd>{String(entry.data.attempts || 0)}</dd><dt>Confidence</dt><dd className="confidence-stars" aria-label={`${entry.data.confidence || 0} out of 5`}>{Array.from({ length: 5 }, (_, index) => <Star size={13} key={index} fill={index < Number(entry.data.confidence || 0) ? 'currentColor' : 'none'} />)}</dd>{entry.data.timeComplexity && <><dt>Time</dt><dd><code>{String(entry.data.timeComplexity)}</code></dd></>}{entry.data.spaceComplexity && <><dt>Space</dt><dd><code>{String(entry.data.spaceComplexity)}</code></dd></>}{entry.data.nextReview && <><dt>Next review</dt><dd>{dateLabel(String(entry.data.nextReview))}</dd></>}</>}{entry.kind === 'task' && <><dt>Priority</dt><dd>{String(entry.data.priority || 'Medium')}</dd><dt>Due</dt><dd>{entry.data.dueDate ? dateLabel(String(entry.data.dueDate)) : 'No deadline'}</dd></>}</dl>
+      {entry.kind === 'question' || entry.kind === 'task' ? <button className="button primary full-width" onClick={() => void complete()}><CheckCircle2 size={15} />{entry.kind === 'question' ? entry.status === 'Solved' ? 'Move to review' : 'Mark as solved' : entry.status === 'Completed' ? 'Reopen task' : 'Complete task'}</button> : null}</section>
+      {links.some(([key]) => safeHref(entry.data[key])) && <section className="panel detail-links"><h2 className="detail-sidebar-title">Explore further</h2>{links.map(([key, label, Icon]) => safeHref(entry.data[key]) && <a key={key} href={safeHref(entry.data[key])} target="_blank" rel="noopener noreferrer"><Icon size={16} />{label}<ArrowLeft className="external-arrow" size={14} /></a>)}</section>}
+      {(entry.tags.length > 0 || entry.data.technologies) && <section className="panel"><h2 className="detail-sidebar-title">{entry.kind === 'project' ? 'Tech & tags' : 'Tags'}</h2><div className="card-tags">{[...String(entry.data.technologies || '').split(',').map(item => item.trim()).filter(Boolean), ...entry.tags].map((tag, index) => <span className="tag" key={`${tag}-${index}`}>{tag}</span>)}</div></section>}
+      {entry.projectId && <section className="panel"><h2 className="detail-sidebar-title">Linked project</h2><Link className="learning-row" to={`/projects/${entry.projectId}`}><FolderKanban size={17} />{entries.find(record => record.id === entry.projectId)?.title || 'Project'}</Link></section>}
+    </aside></div></div>
+}
