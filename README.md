@@ -1,72 +1,130 @@
 # DevVault — Your Personal Developer Universe
 
-DevVault brings projects, coding practice, study notes, useful resources, and learning goals into one private developer workspace. Its dark-first interface combines a deliberately quiet charcoal palette, violet accents, custom CSS illustrations, and restrained motion. The dashboard starts empty: every count and progress indicator is calculated from your own saved records, not demo fixtures.
+DevVault is a personal developer workspace and portfolio that organizes projects, coding practice (DSA solutions), study notes, curated resources, and learning goals in one secure application. It features a dark-first charcoal palette with violet accents, GSAP animations, Lucide icons, and motion interactions.
 
-## Technologies
+---
 
-React 19, Vite, TypeScript, React Router, Tailwind CSS 4, GSAP with ScrollTrigger, Motion for React, Lucide, React Hook Form, Zod, Radix accessible dialogs and menus, Sonner, React Markdown, and Prism power the interface. Netlify Functions, Netlify Identity, and Netlify Database with Drizzle provide the authenticated backend.
+## Architecture & Technology Stack
 
-This project uses the Netlify-native database and authentication required by its deployment environment instead of Supabase. Drizzle's beta release is pinned because the Netlify adapter is only available on that release line. No privileged credentials are bundled into the frontend.
+- **Frontend**: React 19, TypeScript, Vite, React Router 7, Tailwind CSS 4, GSAP + ScrollTrigger, Motion for React, Lucide Icons, React Hook Form, Zod, Radix UI Dialogs & Dropdown Menus, Sonner, React Markdown, PrismJS.
+- **Authentication**: Supabase Auth (Email & Password, Session Persistence, Password Reset & Recovery).
+- **Database & RBAC**: Supabase PostgreSQL with strict Row Level Security (RLS) policies, Profiles with role-based access control (`owner` and `user`), unified `entries` schema, and `activities` tracking.
+- **Owner Command Center**: A protected administrative suite (`/owner` and `/admin`) with platform statistics, user management, and role promotion/demotion.
+- **Security**: Strict Row Level Security policies prevent public data leaks and block ordinary users from promoting themselves to owner. Service role keys and secrets are strictly confined to server-side CLI scripts and excluded from frontend bundles.
 
-## Running locally
+---
 
-Use Node.js 22.12 or later and pnpm.
+## Getting Started
 
-```sh
-pnpm install
-netlify link
-netlify dev --port 8889
-```
-
-The Netlify CLI supplies the functions, Identity endpoint, and database connection. Follow the CLI prompts to link the checkout to your Netlify site. `.env.example` documents the optional public site identifier; neither a Supabase project nor a manually copied database connection string is needed.
-
-Running only `pnpm dev` displays the interface but does **not** provide the backend. Guest browsing starts with an empty workspace, allows drafting forms, and requires sign-in to save. Drafts and guest appearance preferences are session-only React state and do not survive refresh. There is deliberately no local-storage persistence fallback or pretend authentication.
-
-## Production setup
-
-The included `netlify.toml` publishes the Vite app and routes frontend deep links to its entry document. Netlify Identity's activation script was run for this site. Account registration uses email confirmation by default; create an account, confirm the email, then sign in. Configure registration and email delivery in the site's Identity settings as appropriate for your deployment.
-
-The database is automatically provisioned on its first platform connection. The reproducible schema lives in `db/schema.ts`, with the generated migration in `netlify/database/migrations`. Netlify applies migrations during deployment. The initial migration also enables and forces owner-only Row Level Security. Every database request authenticates the user, scopes its queries by owner, and sets the policy's owner context inside a transaction. Never set that context from an unverified browser-supplied identity.
-
-No live cloud CRUD, authentication, or persistence verification was performed during this implementation. Confirm the deployment's migration result and complete the checklist below before treating the installation as verified.
-
-## What you can do
-
-- Create, edit, delete, duplicate, pin, and archive projects. Add stack information, cover URLs, project links, milestones, and personal notes. Search, filter, sort, and switch between grid and list views.
-- Collect DSA questions with topics, difficulty, sources, problem URLs, test cases, complexity, C++ code, attempts, confidence, and review dates. Mark solutions yourself, bookmark questions, and use the review queue.
-- Write Markdown notes with preserved formatting, syntax-highlighted code, folders, tags, and nested parent notes. Save resources by category with URLs and descriptions.
-- Track tasks, linked projects, due dates, priorities, learning goals, and actual topic progress. Weekly completions use saved completion timestamps. The activity chart summarizes your 30 most recent activity events, not an inferred productivity or study-streak metric.
-- Search every collection through the command palette using Ctrl+K or Cmd+K, with arrow-key navigation and Enter to open a result.
-- Customize light, dark, or system appearance, reduced motion, default collection view, and weekly targets. Signed-in preferences persist in the database.
-- Export records as JSON and import a validated version-1 export after confirmation. Imports only add new records and never replace existing data. Export files may contain your private content; keep them safe. Imports currently clear parent-note and project relationships to avoid unsafe references; reconnect those links after import. Imports are limited to 1,000 items and 2 MB.
-
-Notes and projects support private attachments through Netlify Blobs, with owner-scoped metadata and Row Level Security in Netlify Database. Upload PDF, Markdown, text, PNG, JPEG, or WebP files up to 3 MB each, with a maximum of 20 files per item. Downloads pass through an authenticated function; there are no public file URLs. Project covers continue to use validated external image URLs.
-
-Attachments are not included in JSON exports, imports, or item duplication. Download any files you need separately. Remove an item's attachments from its detail page before deleting the item; this restriction prevents orphaning its uploaded files. Blob deletion and metadata deletion span separate services, so a failed deletion can require a retry.
-
-## Architecture
-
-`src/pages` contains the dashboard, reusable collection pages, detail readers, learning view, and settings. `src/components` contains the application shell, editors, search palette, and accessible UI primitives. `src/hooks/useWorkspace.tsx` coordinates authenticated state and mutations. `src/services` handles HTTP access, while shared validation lives in `src/lib/validation.ts`. The backend's typed record model uses an enum discriminator for five entity types, indexed searchable fields, JSONB detail fields, normalized tag relationships, self-referencing project/parent links, profiles, and activity records. This keeps shared CRUD consistent without copying it into five separate APIs.
-
-For a future database change, update the schema and generate a new migration:
+### 1. Install Dependencies
 
 ```sh
-pnpm exec drizzle-kit generate --name add_descriptive_change
+npm install
 ```
 
-Owner policies and the unique owner/tag-name index in the initial SQL migration are intentional custom SQL; preserve them when evolving the schema. The separate attachment migration adds its own owner-only policy without changing the original migration history. New private tables require equivalent policies. Every migration directory must contain its generated `migration.sql`; an empty migration directory prevents deployment validation.
+### 2. Configure Environment Variables
 
-## Verification checklist
+Copy the `.env.example` file to `.env`:
 
-Builds and local test/dev-server commands were intentionally not run in this environment; the deployment pipeline performs the build. After deployment:
+```sh
+cp .env.example .env
+```
 
-1. Register, confirm your email, sign in, and test password recovery and logout.
-2. Add and edit an item in each collection, reload the page, and verify it persisted.
-3. Use two accounts to confirm private records and search results do not cross accounts. Verify unauthenticated API calls return 401.
-4. Test pinning, project archive/restore, duplication, deletion confirmation, filters, sorting, pagination, and all detail routes.
-5. Save and reopen a Markdown note and a C++ solution; verify formatting and code-copy behavior.
-6. Mark a task complete and a question solved, then check actual dashboard and learning counts.
-7. Export/import a small workspace and confirm imports are additive. Test malformed imports, invalid links, and invalid form values.
-8. Test mobile navigation, keyboard dialogs and command search, theme switching, and both system and account reduced-motion preferences.
-9. Upload and download attachments, reload to confirm persistence, reject oversized or unsupported files, and verify that a second account cannot list, download, or delete them. Remove all attachments before deleting the parent item.
-10. Check type-filtered command search, nested note folders, local-date review queues, and recovery controls for unavailable APIs or failed page loads.
+Edit `.env` and fill in your Supabase credentials:
+
+```env
+# Client Configuration (Safe for Vite / Browser)
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+VITE_OWNER_EMAIL=your-owner-email@example.com
+
+# Server-Side Configuration (For administrative scripts only - NEVER expose in client)
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-secret-key
+OWNER_EMAIL=your-owner-email@example.com
+OWNER_PASSWORD=YourSecureOwnerPassword123!
+```
+
+> **Note**: If Supabase variables are not set, DevVault will display a clear notification prompt without crashing.
+
+### 3. Apply Database Migrations to Supabase
+
+Run the SQL migration in `supabase/migrations/20261015000000_init_devvault_supabase.sql` directly in your Supabase project:
+
+1. Open your [Supabase Dashboard](https://supabase.com/dashboard).
+2. Navigate to **SQL Editor** -> **New Query**.
+3. Paste the contents of `supabase/migrations/20261015000000_init_devvault_supabase.sql`.
+4. Click **Run**.
+
+This migration configures:
+- `profiles` table with `role` (`owner` / `user`) and automatic user creation trigger.
+- `entries` table for Projects, DSA Solutions, Notes, Resources, and Tasks.
+- `activities`, `tags`, `entry_tags`, and `attachments` tables.
+- Helper function `public.is_owner()`.
+- Explicit Row Level Security (RLS) policies on every table.
+
+### 4. Provision the Owner Account
+
+To create or promote the site owner account with administrative privileges, run the secure server-side setup script:
+
+```sh
+npm run setup:owner
+```
+
+Or provide arguments directly:
+
+```sh
+node scripts/setup-owner.mjs owner@example.com YourSecurePassword123!
+```
+
+This script uses the Supabase Admin API to create the user in `auth.users`, confirm their email, and set their role to `owner` in `public.profiles`. Ordinary users cannot obtain owner privileges by signing up through the web UI.
+
+### 5. Start the Development Server
+
+```sh
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## Features
+
+- **Authentication**:
+  - Sign In with Email & Password.
+  - Sign Up with Name, Email & Password.
+  - Password Reset via Email Recovery flow.
+  - Automatic session restoration across browser refreshes and tab reloads.
+  - Clean error messages (e.g. incorrect password, unconfirmed email, duplicate account).
+- **Owner Command Center (`/owner` and `/admin`)**:
+  - Accessible only to authenticated users with `role: 'owner'`.
+  - Non-owner users and guests receive a 403 Forbidden / restricted access page.
+  - Platform statistics: total users, projects, DSA solutions, notes/resources, and tasks.
+  - User directory table with role promotion/demotion capabilities.
+- **Project Management**:
+  - Create, view, edit, duplicate, pin, archive, and delete projects.
+  - Fields for category, technology stack, GitHub URL, live demo URL, documentation, cover image, and milestones.
+  - Grid and list view with category chips and search.
+- **DSA Coding Solutions (`/questions`)**:
+  - Add and manage problem solutions with Topic, Difficulty (Easy, Medium, Hard), Source (LeetCode, Codeforces, HackerRank, College Assignment), Problem URL, Attempts, and Confidence (0-5 stars).
+  - Approach, constraints, sample test cases, Time and Space complexity.
+  - Syntax-highlighted C++ solution viewer and editor.
+  - Review queue and spaced repetition scheduling.
+- **Knowledge Notes & Resources**:
+  - Markdown notes with syntax-highlighted code blocks, folder hierarchies, and nested child notes.
+  - Curated resource links with tags and status tracking.
+- **Tasks & Learning Progress**:
+  - Priority levels, due dates, linked projects, and weekly goal tracking.
+  - Activity log summarizing your 30 most recent actions.
+- **Private Attachments**:
+  - Upload PDF, Markdown, text, PNG, JPEG, or WebP files up to 3 MB.
+  - Private storage with authenticated downloads.
+
+---
+
+## Security Best Practices
+
+1. **Row Level Security**: Every database table enforces RLS. Users can only select, insert, update, or delete their own records.
+2. **Owner Role Protection**: The `profiles_update` RLS policy and trigger ensure that standard users cannot elevate their own role to `owner`.
+3. **Secret Isolation**: `SUPABASE_SERVICE_ROLE_KEY` is only used by `scripts/setup-owner.mjs` and is excluded from the Vite client bundle and Git tracking.
+4. **Input Validation**: All forms and inputs are validated using Zod schemas on the client and enforced at the database level.

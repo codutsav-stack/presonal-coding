@@ -1,0 +1,15 @@
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Production build
+dist/
+
+# Local Netlify & caches
+.netlify
+.cache
+*.log

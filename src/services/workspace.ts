@@ -1,24 +1,53 @@
 import type { Workspace, Entry, Preferences } from '../types'
 import type { EntryInput } from '../lib/validation'
-async function request<T>(method: string, body?: unknown, query = ''): Promise<T> {
-  const response = await fetch(`/.netlify/functions/workspace${query}`, { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
-  const result = await response.json().catch(() => ({ error: 'The workspace API is unavailable. Use Netlify Dev locally.' }))
-  if (!response.ok) throw new Error(result.error || 'Something went wrong')
-  return result
-}
+import {
+  loadWorkspace as supabaseLoadWorkspace,
+  saveEntry as supabaseSaveEntry,
+  deleteEntry as supabaseDeleteEntry,
+  openEntry as supabaseOpenEntry,
+  savePreferences as supabaseSavePreferences,
+  importEntries as supabaseImportEntries,
+  isSupabaseConfigured,
+} from '../lib/supabase'
+
 export async function loadWorkspace(): Promise<Workspace> {
-  const first = await request<Workspace & { more: boolean }>('GET')
-  const all = [...first.entries]
-  let more = first.more
-  while (more) {
-    const page = await request<Workspace & { more: boolean }>('GET', undefined, `?offset=${all.length}`)
-    all.push(...page.entries)
-    more = page.more
+  if (!isSupabaseConfigured()) {
+    return {
+      entries: [],
+      activities: [],
+      preferences: { theme: 'dark', reducedMotion: false, defaultView: 'grid', weeklyGoal: 5 },
+    }
   }
-  return { entries: all, activities: first.activities, preferences: first.preferences }
+  return supabaseLoadWorkspace()
 }
-export async function saveEntry(entry: EntryInput, id?: string) { return request<{ entry: Entry }>(id ? 'PATCH' : 'POST', { entry, id }) }
-export async function deleteEntry(id: string) { return request('DELETE', { id }) }
-export async function openEntry(id: string) { return request('PATCH', { id, action: 'open' }) }
-export async function savePreferences(preferences: Preferences) { return request('PATCH', { action: 'preferences', preferences }) }
-export async function importEntries(payload: unknown) { return request<{ count: number }>('POST', { action: 'import', payload }) }
+
+export async function saveEntry(entry: EntryInput, id?: string): Promise<{ entry: Entry }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.')
+  }
+  return supabaseSaveEntry(entry, id)
+}
+
+export async function deleteEntry(id: string): Promise<{ deleted: string }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured.')
+  }
+  return supabaseDeleteEntry(id)
+}
+
+export async function openEntry(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  return supabaseOpenEntry(id)
+}
+
+export async function savePreferences(preferences: Preferences): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  return supabaseSavePreferences(preferences)
+}
+
+export async function importEntries(payload: unknown): Promise<{ count: number }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured.')
+  }
+  return supabaseImportEntries(payload)
+}

@@ -1,35 +1,345 @@
 import { useState, useRef, useEffect } from 'react'
-import { updateUser, logout, requestPasswordRecovery } from '@netlify/identity'
 import { toast } from 'sonner'
-import { UserRound, Palette, Database, Download, Upload, ShieldCheck, LogOut, Sun, Moon, Monitor, Check } from 'lucide-react'
+import { Link } from 'react-router'
+import { 
+  UserRound, 
+  Palette, 
+  Database, 
+  Download, 
+  Upload, 
+  ShieldCheck, 
+  LogOut, 
+  Sun, 
+  Moon, 
+  Monitor, 
+  Check,
+  KeyRound
+} from 'lucide-react'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { importSchema } from '../lib/validation'
 import { importEntries } from '../services/workspace'
+import { updateUserProfile, requestPasswordRecovery } from '../lib/supabase'
 import { Modal } from '../components/ui/Modal'
 
 export function Settings() {
-  const { user, entries, preferences, changePreferences, setAuthOpen, refresh } = useWorkspace()
+  const { user, isOwner, entries, preferences, changePreferences, setAuthOpen, refresh, signOutUser } = useWorkspace()
   const [name, setName] = useState(user?.name || '')
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<ReturnType<typeof importSchema.parse> | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  useEffect(() => { setName(user?.name || ''); setPending(null) }, [user?.id])
-  const handle = async (action: () => Promise<unknown>, message?: string) => { try { await action(); if (message) toast.success(message) } catch (error) { toast.error(error instanceof Error ? error.message : 'Something went wrong') } }
+
+  useEffect(() => { 
+    setName(user?.name || '')
+    setPending(null) 
+  }, [user?.id, user?.name])
+
+  const handle = async (action: () => Promise<unknown>, message?: string) => { 
+    try { 
+      await action()
+      if (message) toast.success(message) 
+    } catch (error) { 
+      toast.error(error instanceof Error ? error.message : 'Something went wrong') 
+    } 
+  }
+
   const exportData = () => {
     const payload = { version: 1, exportedAt: new Date().toISOString(), entries }
     const objectUrl = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
-    const link = document.createElement('a'); link.href = objectUrl; link.download = `devvault-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(objectUrl); toast.success('Your workspace exported')
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = `devvault-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    URL.revokeObjectURL(objectUrl)
+    toast.success('Your workspace exported')
   }
+
   const readImport = async (file: File) => {
-    if (!user) { setAuthOpen(true); return }
-    if (file.size > 2000000) { toast.error('Choose a JSON file smaller than 2 MB'); return }
-    try { const payload = importSchema.parse(JSON.parse(await file.text())); setPending(payload) } catch { toast.error('This file is not a valid DevVault export (version 1, up to 1,000 items).') }
+    if (!user) { 
+      setAuthOpen(true)
+      return 
+    }
+    if (file.size > 2000000) { 
+      toast.error('Choose a JSON file smaller than 2 MB')
+      return 
+    }
+    try { 
+      const payload = importSchema.parse(JSON.parse(await file.text()))
+      setPending(payload) 
+    } catch { 
+      toast.error('This file is not a valid DevVault export (version 1, up to 1,000 items).') 
+    }
   }
-  return <div className="page-content settings-page"><div className="page-intro"><div><div className="eyebrow">MAKE YOURSELF AT HOME</div><h1>Settings<span className="heading-dot">.</span></h1><p>A workspace that feels like you. Down to the details.</p></div></div><div className="settings-layout"><div className="settings-nav"><a href="#profile"><UserRound size={16} />Your profile</a><a href="#appearance"><Palette size={16} />Appearance</a><a href="#data"><Database size={16} />Your data</a><a href="#account"><ShieldCheck size={16} />Account</a></div><div className="settings-sections">
-    <section className="panel settings-section" id="profile"><h2><UserRound size={18} />Your profile</h2><p>The person behind the projects.</p>{user ? <form onSubmit={async event => { event.preventDefault(); if (!name.trim() || name.length > 80) { toast.error('Use a name between 1 and 80 characters'); return } setBusy(true); await handle(() => updateUser({ data: { full_name: name.trim() } }), 'Profile updated'); setBusy(false) }}><label>Display name<input value={name} onChange={event => setName(event.target.value)} maxLength={80} required /></label><label>Email address<input value={user.email || ''} disabled /></label><button className="button primary small" disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</button></form> : <div className="settings-signin"><p>Sign in to give this workspace your name and save your preferences across devices.</p><button className="button primary small" onClick={() => setAuthOpen(true)}>Sign in to DevVault</button></div>}</section>
-    <section className="panel settings-section" id="appearance"><h2><Palette size={18} />Appearance</h2><p>Your space, your atmosphere.</p><div className="theme-choices">{[{ key: 'dark', label: 'Dark', icon: Moon }, { key: 'light', label: 'Light', icon: Sun }, { key: 'system', label: 'System', icon: Monitor }].map(theme => <button key={theme.key} className={`theme-choice ${theme.key} ${preferences.theme === theme.key ? 'selected' : ''}`} onClick={() => void handle(() => changePreferences({ theme: theme.key as typeof preferences.theme }))}><div className="theme-preview"><i /><span><b /><b /><b /></span></div><span><theme.icon size={14} />{theme.label}{preferences.theme === theme.key && <Check size={14} />}</span></button>)}</div><div className="setting-row"><div><strong>Reduced motion</strong><p>Keep things calm. System preferences are always respected.</p></div><button className={`switch ${preferences.reducedMotion ? 'on' : ''}`} role="switch" aria-checked={preferences.reducedMotion} aria-label="Reduce animations" onClick={() => void handle(() => changePreferences({ reducedMotion: !preferences.reducedMotion }))}><span /></button></div><div className="setting-row"><div><strong>Default collection view</strong><p>How you like to see your work.</p></div><select aria-label="Default collection view" value={preferences.defaultView} onChange={event => void handle(() => changePreferences({ defaultView: event.target.value as 'grid' | 'list' }))}><option value="grid">Grid view</option><option value="list">List view</option></select></div><div className="setting-row"><div><strong>Weekly learning goal</strong><p>Completed items to aim for each week.</p></div><input className="goal-input" type="number" aria-label="Weekly goal" min={1} max={100} value={preferences.weeklyGoal} onChange={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 100) void handle(() => changePreferences({ weeklyGoal: value })) }} /></div>{!user && <p className="settings-footnote">Guest appearance changes last for this session. Sign in to save them to your account.</p>}</section>
-    <section className="panel settings-section" id="data"><h2><Database size={18} />Your data belongs to you</h2><p>Take your universe with you, or bring it back home.</p><div className="setting-row"><div><strong>Export workspace</strong><p>Download your {entries.length} items in a portable JSON file.</p></div><button className="button secondary small" onClick={exportData}><Download size={15} />Export JSON</button></div><div className="setting-row"><div><strong>Import workspace</strong><p>Add a validated DevVault export. Existing items are never overwritten.</p></div><button className="button secondary small" onClick={() => fileRef.current?.click()}><Upload size={15} />Import JSON</button><input hidden ref={fileRef} type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; if (file) void readImport(file); event.target.value = '' }} /></div><div className="data-info"><ShieldCheck size={17} /><div><strong>Private by design.</strong><p>Your records are stored in Netlify Database with authenticated access and owner-only database policies. No browser-storage substitutes.</p></div></div></section>
-    <section className="panel settings-section" id="account"><h2><ShieldCheck size={18} />Account & security</h2><p>{user ? `Signed in as ${user.email || user.name}` : 'No account is connected yet.'}</p>{user && <div className="account-buttons"><button className="button secondary small" onClick={() => void handle(() => requestPasswordRecovery(user.email || ''), 'Check your email for a reset link')}>Reset password</button><button className="button secondary small" onClick={() => void handle(() => logout(), 'Signed out securely')}><LogOut size={15} />Sign out</button></div>}</section>
-    </div></div><Modal open={!!pending} onClose={() => setPending(null)} title="Bring your universe home?" description={`${pending?.entries.length || 0} items will be added as new records. Existing data will stay untouched. Imported project and parent-note links are cleared to prevent cross-account references; reconnect them after import.`}><div className="modal-footer"><button className="button secondary" onClick={() => setPending(null)}>Cancel</button><button className="button primary" disabled={busy} onClick={async () => { if (!pending) return; setBusy(true); try { const result = await importEntries(pending); await refresh(); setPending(null); toast.success(`Imported ${result.count} items`) } catch (error) { toast.error(error instanceof Error ? error.message : 'Import failed') } finally { setBusy(false) } }}>{busy ? 'Importing…' : 'Import items'}</button></div></Modal>
-  </div>
+
+  return (
+    <div className="page-content settings-page">
+      <div className="page-intro">
+        <div>
+          <div className="eyebrow">MAKE YOURSELF AT HOME</div>
+          <h1>Settings<span className="heading-dot">.</span></h1>
+          <p>A workspace that feels like you. Down to the details.</p>
+        </div>
+      </div>
+
+      <div className="settings-layout">
+        <div className="settings-nav">
+          <a href="#profile"><UserRound size={16} />Your profile</a>
+          <a href="#appearance"><Palette size={16} />Appearance</a>
+          <a href="#data"><Database size={16} />Your data</a>
+          <a href="#account"><ShieldCheck size={16} />Account</a>
+        </div>
+
+        <div className="settings-sections">
+          {/* Profile Section */}
+          <section className="panel settings-section" id="profile">
+            <h2><UserRound size={18} />Your profile</h2>
+            <p>The person behind the projects.</p>
+            {user ? (
+              <form onSubmit={async event => { 
+                event.preventDefault()
+                if (!name.trim() || name.length > 80) { 
+                  toast.error('Use a name between 1 and 80 characters')
+                  return 
+                } 
+                setBusy(true)
+                await handle(() => updateUserProfile(name.trim()), 'Profile updated')
+                await refresh()
+                setBusy(false) 
+              }}>
+                <label>
+                  Display name
+                  <input 
+                    value={name} 
+                    onChange={event => setName(event.target.value)} 
+                    maxLength={80} 
+                    required 
+                  />
+                </label>
+                <label>
+                  Email address
+                  <input value={user.email || ''} disabled />
+                </label>
+                <label>
+                  Role authorization
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }}>
+                    <span className={`tag ${isOwner ? 'violet' : ''}`} style={{ fontSize: '0.85rem' }}>
+                      {isOwner ? <ShieldCheck size={13} style={{ display: 'inline', marginRight: 4 }} /> : null}
+                      {isOwner ? 'Owner (Administrator)' : 'Developer (Standard User)'}
+                    </span>
+                    {isOwner && (
+                      <Link to="/owner" className="button secondary small" style={{ padding: '0.3rem 0.6rem', fontSize: '0.78rem' }}>
+                        Open Owner Dashboard
+                      </Link>
+                    )}
+                  </div>
+                </label>
+                <button className="button primary small" disabled={busy}>
+                  {busy ? 'Saving…' : 'Save profile'}
+                </button>
+              </form>
+            ) : (
+              <div className="settings-signin">
+                <p>Sign in to give this workspace your name and save your preferences across devices.</p>
+                <button className="button primary small" onClick={() => setAuthOpen(true)}>
+                  Sign in to DevVault
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* Appearance Section */}
+          <section className="panel settings-section" id="appearance">
+            <h2><Palette size={18} />Appearance</h2>
+            <p>Your space, your atmosphere.</p>
+            <div className="theme-choices">
+              {[
+                { key: 'dark', label: 'Dark', icon: Moon }, 
+                { key: 'light', label: 'Light', icon: Sun }, 
+                { key: 'system', label: 'System', icon: Monitor }
+              ].map(theme => (
+                <button 
+                  key={theme.key} 
+                  className={`theme-choice ${theme.key} ${preferences.theme === theme.key ? 'selected' : ''}`} 
+                  onClick={() => void handle(() => changePreferences({ theme: theme.key as typeof preferences.theme }))}
+                >
+                  <div className="theme-preview">
+                    <i />
+                    <span><b /><b /><b /></span>
+                  </div>
+                  <span>
+                    <theme.icon size={14} />
+                    {theme.label}
+                    {preferences.theme === theme.key && <Check size={14} />}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="setting-row">
+              <div>
+                <strong>Reduced motion</strong>
+                <p>Keep things calm. System preferences are always respected.</p>
+              </div>
+              <button 
+                className={`switch ${preferences.reducedMotion ? 'on' : ''}`} 
+                role="switch" 
+                aria-checked={preferences.reducedMotion} 
+                aria-label="Reduce animations" 
+                onClick={() => void handle(() => changePreferences({ reducedMotion: !preferences.reducedMotion }))}
+              >
+                <span />
+              </button>
+            </div>
+
+            <div className="setting-row">
+              <div>
+                <strong>Default collection view</strong>
+                <p>How you like to see your work.</p>
+              </div>
+              <select 
+                aria-label="Default collection view" 
+                value={preferences.defaultView} 
+                onChange={event => void handle(() => changePreferences({ defaultView: event.target.value as 'grid' | 'list' }))}
+              >
+                <option value="grid">Grid view</option>
+                <option value="list">List view</option>
+              </select>
+            </div>
+
+            <div className="setting-row">
+              <div>
+                <strong>Weekly learning goal</strong>
+                <p>Completed items to aim for each week.</p>
+              </div>
+              <input 
+                className="goal-input" 
+                type="number" 
+                aria-label="Weekly goal" 
+                min={1} 
+                max={100} 
+                value={preferences.weeklyGoal} 
+                onChange={event => { 
+                  const value = Number(event.target.value)
+                  if (Number.isInteger(value) && value >= 1 && value <= 100) {
+                    void handle(() => changePreferences({ weeklyGoal: value })) 
+                  }
+                }} 
+              />
+            </div>
+            {!user && (
+              <p className="settings-footnote">
+                Guest appearance changes last for this session. Sign in to save them to your account.
+              </p>
+            )}
+          </section>
+
+          {/* Data Section */}
+          <section className="panel settings-section" id="data">
+            <h2><Database size={18} />Your data belongs to you</h2>
+            <p>Take your universe with you, or bring it back home.</p>
+            <div className="setting-row">
+              <div>
+                <strong>Export workspace</strong>
+                <p>Download your {entries.length} items in a portable JSON file.</p>
+              </div>
+              <button className="button secondary small" onClick={exportData}>
+                <Download size={15} />
+                Export JSON
+              </button>
+            </div>
+
+            <div className="setting-row">
+              <div>
+                <strong>Import workspace</strong>
+                <p>Add a validated DevVault export. Existing items are never overwritten.</p>
+              </div>
+              <button className="button secondary small" onClick={() => fileRef.current?.click()}>
+                <Upload size={15} />
+                Import JSON
+              </button>
+              <input 
+                hidden 
+                ref={fileRef} 
+                type="file" 
+                accept="application/json,.json" 
+                onChange={event => { 
+                  const file = event.target.files?.[0]
+                  if (file) void readImport(file)
+                  event.target.value = '' 
+                }} 
+              />
+            </div>
+
+            <div className="data-info">
+              <ShieldCheck size={17} />
+              <div>
+                <strong>Private by design.</strong>
+                <p>Your records are stored securely in Supabase PostgreSQL with authenticated access and owner-only database policies. No browser-storage substitutes.</p>
+              </div>
+            </div>
+          </section>
+
+          {/* Account Section */}
+          <section className="panel settings-section" id="account">
+            <h2><ShieldCheck size={18} />Account & security</h2>
+            <p>{user ? `Signed in as ${user.email || user.name}` : 'No account is connected yet.'}</p>
+            {user ? (
+              <div className="account-buttons">
+                <button 
+                  className="button secondary small" 
+                  onClick={() => void handle(() => requestPasswordRecovery(user.email || ''), 'Check your email for a reset link')}
+                >
+                  <KeyRound size={15} />
+                  Reset password
+                </button>
+                <button 
+                  className="button secondary small" 
+                  onClick={() => void signOutUser()}
+                >
+                  <LogOut size={15} />
+                  Sign out
+                </button>
+              </div>
+            ) : (
+              <button className="button primary small" onClick={() => setAuthOpen(true)}>
+                Sign in to your account
+              </button>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <Modal 
+        open={!!pending} 
+        onClose={() => setPending(null)} 
+        title="Bring your universe home?" 
+        description={`${pending?.entries.length || 0} items will be added as new records. Existing data will stay untouched. Imported project and parent-note links are cleared to prevent cross-account references; reconnect them after import.`}
+      >
+        <div className="modal-footer">
+          <button className="button secondary" onClick={() => setPending(null)}>
+            Cancel
+          </button>
+          <button 
+            className="button primary" 
+            disabled={busy} 
+            onClick={async () => { 
+              if (!pending) return
+              setBusy(true)
+              try { 
+                const result = await importEntries(pending)
+                await refresh()
+                setPending(null)
+                toast.success(`Imported ${result.count} items`) 
+              } catch (error) { 
+                toast.error(error instanceof Error ? error.message : 'Import failed') 
+              } finally { 
+                setBusy(false) 
+              } 
+            }}
+          >
+            {busy ? 'Importing…' : 'Import items'}
+          </button>
+        </div>
+      </Modal>
+    </div>
+  )
 }

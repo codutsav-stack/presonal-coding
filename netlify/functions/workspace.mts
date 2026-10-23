@@ -10,7 +10,7 @@ export default async (request: Request) => {
   const headers = { 'Cache-Control': 'private, no-store', 'Content-Type': 'application/json' }
   const respond = (body: unknown, status = 200) => Response.json(body, { status, headers })
   if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(request.method)) return respond({ error: 'Method not allowed' }, 405)
-  if (request.method !== 'GET') {
+  if (request.method !== 'GET') { 
     const origin = request.headers.get('origin')
     if (!origin || origin !== new URL(request.url).origin) return respond({ error: 'Invalid request origin' }, 403)
     if (!request.headers.get('content-type')?.includes('application/json')) return respond({ error: 'JSON required' }, 415)
